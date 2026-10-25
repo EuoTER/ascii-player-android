@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#07060a">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600&display=swap">
+<title>ascii-player</title>
+<style>
+
+@property --amber{syntax:'<color>';inherits:true;initial-value:#ffb02e;}
+@property --amber-dim{syntax:'<color>';inherits:true;initial-value:#7a5518;}
+
+:root{
+  --amber:#ffb02e; --amber-dim:#7a5518; --amber-glow:rgba(255,176,46,.35);
+  --ink:#f5f2ee; --ink-dim:rgba(245,242,238,.58);
+  --rec:#ff5252; --glassfx:blur(26px) saturate(190%) brightness(1.06);
+  --ease:cubic-bezier(.22,.9,.28,1);
+  --spring:cubic-bezier(.34,1.56,.64,1);
+  --ui:-apple-system,BlinkMacSystemFont,'SF Pro Text','Noto Sans Thai',system-ui,sans-serif;
+  transition:--amber .7s var(--ease),--amber-dim .7s var(--ease);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;height:100dvh;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%;background:#07060a;color:var(--ink);font-family:var(--ui);overflow:hidden;}
+
+/* ---------- ambient light that the glass refracts ---------- */
+#ambient{position:fixed;inset:0;overflow:hidden;z-index:0;}
+#ambient i{position:absolute;border-radius:50%;background:radial-gradient(closest-side,var(--amber),transparent);opacity:.45;will-change:transform;}
+#ambient i:nth-child(1){width:46vmax;height:46vmax;left:-12vmax;top:-10vmax;animation:drift1 26s ease-in-out infinite alternate;}
+#ambient i:nth-child(2){width:38vmax;height:38vmax;right:-10vmax;bottom:-12vmax;background:radial-gradient(closest-side,var(--amber-dim),transparent);opacity:.7;animation:drift2 32s ease-in-out infinite alternate;}
+#ambient i:nth-child(3){width:26vmax;height:26vmax;left:38%;top:30%;opacity:.16;animation:drift3 38s ease-in-out infinite alternate;}
+@keyframes drift1{to{transform:translate3d(14vmax,10vmax,0) scale(1.15);}}
+@keyframes drift2{to{transform:translate3d(-16vmax,-8vmax,0) scale(1.1);}}
+@keyframes drift3{to{transform:translate3d(-12vmax,14vmax,0) scale(.85);}}
+
+body.playing #ambient i{animation-play-state:paused;}
+select optgroup{background:#1c1814;color:rgba(245,242,238,.55);font-style:normal;}
+
+/* ---------- liquid glass ---------- */
+.glass{
+  position:relative;
+  background:linear-gradient(140deg,rgba(255,255,255,.17),rgba(255,255,255,.04) 55%,rgba(255,255,255,.09));
+  -webkit-backdrop-filter:var(--glassfx);backdrop-filter:var(--glassfx);contain:layout style;
+  border-radius:28px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.5),
+    inset 0 -1px 0 rgba(255,255,255,.1),
+    inset 1px 0 0 rgba(255,255,255,.14),
+    inset 0 0 28px rgba(255,255,255,.06),
+    inset 3px 0 5px -3px rgba(255,110,110,.32),
+    inset -3px 0 5px -3px rgba(110,160,255,.32),
+    inset 0 12px 18px -14px rgba(255,255,255,.35),
+    0 18px 50px rgba(0,0,0,.45),
+    0 2px 6px rgba(0,0,0,.3);
+}
+.glass::before{ /* specular rim */
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.75),rgba(255,255,255,0) 32%,rgba(255,255,255,0) 68%,rgba(255,255,255,.4));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.glass::after{ /* soft sheen */
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(120% 60% at 15% 0%,rgba(255,255,255,.2),transparent 55%);
+  opacity:.7;
+}
+.glass > *{position:relative;z-index:1;}
+
+#app{position:relative;z-index:1;height:100%;height:100dvh;display:flex;flex-direction:column;gap:14px;
+  padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));}
+
+/* ---------- title bar ---------- */
+#titlebar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;
+  animation:rise .8s var(--ease) both;}
+.dot{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 1px 1px rgba(255,255,255,.5),0 0 0 .5px rgba(0,0,0,.25);}
+.dot.r{background:#ff5f56}.dot.y{background:#ffbd2e}.dot.g{background:#27c93f}
+#titletext{margin-left:6px;font-size:13px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#titletext b{color:var(--ink);font-weight:600;}
+#cursor{display:inline-block;width:6px;height:13px;background:var(--amber);margin-left:3px;vertical-align:middle;border-radius:1px;animation:blink 1.1s step-end infinite;}
+@keyframes blink{50%{opacity:0}}
+#rec{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-dim);letter-spacing:.8px;}
+#rec .light{width:8px;height:8px;border-radius:50%;background:#4a3a3a;transition:background .4s,box-shadow .4s;}
+#rec .light.on{background:var(--rec);box-shadow:0 0 10px var(--rec);animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{50%{opacity:.4}}
+#fullscreenBtn{flex:0 0 auto;width:40px;height:40px;min-height:0;padding:0;border-radius:50%;font-size:15px;}
+
+/* ---------- layout ---------- */
+#main{flex:1 1 auto;display:flex;gap:14px;min-height:0;}
+#panel{flex:0 0 300px;padding:20px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:20px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) transparent;animation:rise .9s .08s var(--ease) both;}
+#panel::-webkit-scrollbar{width:8px}
+#panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.28);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+#panel::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.45);background-clip:padding-box;}
+.section-label{font-size:12px;font-weight:600;color:var(--ink-dim);margin-bottom:10px;}
+
+#dropzone{border:1.5px dashed rgba(255,255,255,.28);border-radius:20px;padding:20px 14px;text-align:center;cursor:pointer;
+  font-size:12px;line-height:1.6;color:var(--ink-dim);background:rgba(255,255,255,.04);
+  transition:transform .5s var(--spring),border-color .3s,background .3s,color .3s;}
+#dropzone:hover,#dropzone.drag{border-color:var(--amber);background:rgba(255,255,255,.1);color:var(--ink);}
+#dropzone.drag{transform:scale(1.025);}
+#dropzone b{display:block;color:var(--ink);font-size:14px;margin-bottom:4px;}
+#fileInput{display:none}
+#filename{margin-top:8px;font-size:11px;color:var(--amber);word-break:break-all;}
+
+.ctrl{margin-bottom:14px}
+.ctrl label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-dim);margin-bottom:9px;}
+.ctrl label .val{color:var(--ink);font-variant-numeric:tabular-nums;}
+
+input[type=range]{width:100%;height:24px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;outline:none;cursor:pointer;--p:50%;}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:6px;
+  background:linear-gradient(90deg,var(--amber) var(--p),rgba(255,255,255,.16) var(--p));box-shadow:inset 0 1px 2px rgba(0,0,0,.35);}
+input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:rgba(255,255,255,.16);}
+input[type=range]::-moz-range-progress{height:6px;border-radius:6px;background:var(--amber);}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:20px;margin-top:-7px;border-radius:12px;border:0;
+  background:linear-gradient(#fff,#e9e6e2);box-shadow:0 2px 8px rgba(0,0,0,.45),inset 0 -1px 2px rgba(0,0,0,.12);
+  transition:transform .35s var(--spring),box-shadow .3s;}
+input[type=range]::-moz-range-thumb{width:30px;height:20px;border-radius:12px;border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.45);}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.14);box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 0 6px var(--amber-glow);}
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--amber);}
+
+select{width:100%;appearance:none;-webkit-appearance:none;color:var(--ink);font:inherit;font-size:13px;padding:10px 36px 10px 14px;
+  border:0;border-radius:14px;outline:none;cursor:pointer;
+  background:rgba(255,255,255,.09) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='white' stroke-opacity='.7' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),inset 0 0 0 1px rgba(255,255,255,.1);transition:background-color .3s,box-shadow .3s;}
+select:hover{background-color:rgba(255,255,255,.15);}
+select:focus-visible{box-shadow:inset 0 0 0 1.5px var(--amber);}
+select option{background:#1c1814;color:#f5f2ee;}
+
+.btnrow{display:flex;gap:10px}
+button{flex:1;position:relative;min-height:44px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font:inherit;font-size:13px;font-weight:500;padding:12px 10px;border:0;border-radius:999px;cursor:pointer;
+  background:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),inset 0 0 0 1px rgba(255,255,255,.1),0 4px 14px rgba(0,0,0,.28);
+  transition:transform .45s var(--spring),background .3s,box-shadow .3s,opacity .3s;}
+button:hover:not(:disabled){background:rgba(255,255,255,.18);}
+button:active:not(:disabled){transform:scale(.95);}
+button:focus-visible{outline:2px solid var(--amber);outline-offset:2px;}
+button.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--amber) 92%,#fff),var(--amber));color:#1a1206;font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 6px 22px var(--amber-glow);}
+button.primary:hover:not(:disabled){background:linear-gradient(180deg,color-mix(in srgb,var(--amber) 80%,#fff),color-mix(in srgb,var(--amber) 95%,#fff));}
+button:disabled{opacity:.38;cursor:not-allowed;}
+#muteBtn{flex:0 0 52px}
+
+/* ---------- stage ---------- */
+#stagewrap{flex:1 1 0;min-width:0;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;border-radius:28px;overflow:hidden;
+  background:#000;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 18px 50px rgba(0,0,0,.5);animation:rise .9s .16s var(--ease) both;}
+#canvas{display:block;transform:translateZ(0);transition:opacity .6s var(--ease),filter .6s var(--ease);}
+#canvas.swap{opacity:0;filter:blur(8px);}
+#hint{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);max-width:calc(100% - 32px);text-align:center;
+  font-size:12px;padding:9px 16px;border-radius:999px;color:var(--ink-dim);pointer-events:none;transition:opacity .5s,transform .5s var(--ease);
+  background:rgba(24,20,16,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.3);}
+#hint.gone{opacity:0;transform:translate(-50%,10px);visibility:hidden;transition:opacity .5s,transform .5s var(--ease),visibility 0s .5s;}
+#hint b{color:var(--ink)}
+footer{flex:0 0 auto;display:flex;justify-content:space-between;padding:0 10px;font-size:11px;color:var(--ink-dim);}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px) scale(.985);}to{opacity:1;transform:none;}}
+
+#stagecol{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:14px;}
+#dock{flex:0 0 auto;display:flex;gap:10px;padding:9px;border-radius:999px;animation:rise .9s .22s var(--ease) both;}
+#dock button{min-height:48px;}
+#settingsBtn,#sheetHandle{display:none;}
+@media (max-width:720px),(max-height:520px) and (orientation:landscape){
+  :root{--glassfx:blur(18px) saturate(170%);}
+  #app{gap:10px;}
+  #titlebar{padding:8px 14px;}
+  #titlebar .dot{display:none;}
+  #stagecol{gap:10px;}
+  #stagewrap{min-height:140px;border-radius:24px;}
+  #panel{position:fixed;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));
+    bottom:calc(max(10px,env(safe-area-inset-bottom)) + 78px);z-index:20;flex:none;max-height:min(64dvh,580px);animation:none;
+    overscroll-behavior:contain;transform:translateY(calc(100% + 110px));opacity:0;visibility:hidden;
+    transition:transform .5s var(--spring),opacity .3s,visibility 0s .5s;}
+  #panel.open{transform:none;opacity:1;visibility:visible;transition:transform .5s var(--spring),opacity .3s;}
+  #settingsBtn{display:block;flex:0 0 56px;font-size:19px;}
+  #sheetHandle{display:block;flex:0 0 auto;width:42px;height:5px;min-height:0;padding:0;border-radius:5px;background:rgba(255,255,255,.42);margin:-8px auto -6px;touch-action:none;}
+}
+@media (pointer:coarse){
+  input[type=range]{height:38px;}
+  select{font-size:16px;padding:13px 36px 13px 14px;}
+  .ctrl label{font-size:13px;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.01ms!important;}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .glass{background:rgba(32,28,24,.88);}
+}
+</style>
+</head>
+<body>
+<div id="ambient"><i></i><i></i><i></i></div>
+
+<div id="app">
+  <div id="titlebar" class="glass">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <div id="titletext"><b>ascii-player</b> — <span data-i18n="liveRender">live render</span><span id="cursor"></span></div>
+    <div id="rec"><span class="light" id="recLight"></span><span id="recText">IDLE</span></div>
+    <button id="fullscreenBtn" aria-label="Fullscreen">⛶</button>
+  </div>
+
+  <div id="main">
+    <div id="panel" class="glass">
+      <div id="sheetHandle" role="presentation"></div>
+      <div>
+        <div class="section-label" data-i18n="secLang">language</div>
+        <div class="ctrl">
+          <select id="languageSel" aria-label="language">
+            <option value="th">ไทย (Thai)</option>
+            <option value="en">English</option>
+            <option value="zh">中文 (Chinese)</option>
+            <option value="ja">日本語 (Japanese)</option>
+            <option value="id">Bahasa Indonesia</option>
+            <option value="vi">Tiếng Việt</option>
+            <option value="ru">Русский</option>
+            <option value="ko">한국어</option>
+            <option value="tw">繁體中文</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="pt">Português</option>
+            <option value="hi">हिन्दी</option>
+            <option value="ms">Bahasa Melayu</option>
+            <option value="tr">Türkçe</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secSource">source</div>
+        <div id="dropzone" role="button" tabindex="0">
+          <b data-i18n="dropHeading">+ เลือกวิดีโอ</b>
+          <span data-i18n="dropBody">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</span>
+        </div>
+        <input type="file" id="fileInput" accept="video/*">
+        <div id="filename"></div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secGrid">grid</div>
+        <div class="ctrl">
+          <label><span data-i18n="labelGrid">ความละเอียดตัวอักษร</span><span class="val" id="gridVal">9px</span></label>
+          <input type="range" id="gridSize" min="4" max="20" value="9" step="1">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secImage">image</div>
+        <div class="ctrl">
+          <label><span data-i18n="labelContrast">Contrast</span><span class="val" id="contrastVal">1.20</span></label>
+          <input type="range" id="contrast" min="0.5" max="2.5" value="1.2" step="0.05">
+        </div>
+        <div class="ctrl">
+          <label><span data-i18n="labelBrightness">Brightness</span><span class="val" id="brightVal">0</span></label>
+          <input type="range" id="brightness" min="-80" max="80" value="0" step="5">
+        </div>
+        <div class="ctrl">
+          <label><span data-i18n="labelSmooth">Smoothing</span><span class="val" id="smoothVal">35%</span></label>
+          <input type="range" id="smooth" min="0" max="85" value="35" step="5">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secCharset">character set</div>
+        <div class="ctrl">
+          <select id="charset" aria-label="character set">
+            <option value="classic" selected>Classic (@%#*+=-:. )</option>
+            <option value="detailed">Detailed (70 levels)</option>
+            <option value="ultra">Ultra (90+ levels)</option>
+            <option value="matrix">Matrix (katakana)</option>
+            <option value="braille">Braille (fine dots)</option>
+            <option value="blocks">Blocks (░▒▓█)</option>
+            <option value="binary">Binary (01)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secTheme">theme</div>
+        <div class="ctrl">
+          <select id="palette" aria-label="theme">
+            <optgroup label="Basic">
+              <option value="source" selected>True video colors</option>
+              <option value="amber">Amber CRT</option>
+              <option value="green">Green Matrix</option>
+              <option value="mono">Mono</option>
+              <option value="red">Red</option>
+              <option value="greenblack">Green &amp; Black</option>
+              <option value="blue">Blue</option>
+              <option value="darkred">Dark &amp; Red</option>
+              <option value="bloodmoon">Blood Moon</option>
+              <option value="rgb">RGB</option>
+              <option value="chromatic">Chromatic</option>
+            </optgroup>
+            <optgroup label="Gradient">
+              <option value="fire">Fire</option>
+              <option value="lava">Lava</option>
+              <option value="sunset">Sunset</option>
+              <option value="vaporwave">Vaporwave</option>
+              <option value="cyberpunk">Cyberpunk</option>
+              <option value="neonpink">Neon Pink</option>
+              <option value="purple">Purple</option>
+              <option value="ocean">Ocean</option>
+              <option value="ice">Ice</option>
+              <option value="mint">Mint</option>
+              <option value="forest">Forest</option>
+              <option value="sakura">Sakura</option>
+              <option value="gold">Gold</option>
+              <option value="sepia">Sepia</option>
+              <option value="thermal">Thermal</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secPerf">performance</div>
+        <div class="ctrl">
+          <select id="perf" aria-label="performance">
+            <option value="auto" selected>Auto</option>
+            <option value="quality">Sharpest</option>
+            <option value="smooth">Smoothest</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label" data-i18n="secAudio">audio</div>
+        <div class="ctrl">
+          <label><span data-i18n="labelVolume">ระดับเสียง</span><span class="val" id="volVal">100%</span></label>
+          <input type="range" id="volume" min="0" max="100" value="100" step="1">
+        </div>
+      </div>
+
+    </div>
+
+    <div id="stagecol">
+      <div id="stagewrap">
+        <canvas id="canvas"></canvas>
+        <div id="hint" data-i18n="hint"></div>
+      </div>
+      <div id="dock" class="glass">
+        <button id="playBtn" class="primary" disabled>▶ PLAY</button>
+        <button id="muteBtn" disabled aria-label="mute" style="flex:0 0 52px">🔊</button>
+        <button id="downloadBtn" disabled aria-label="download">⬇</button>
+        <button id="settingsBtn" aria-label="settings" aria-expanded="false">⚙</button>
+      </div>
+    </div>
+  </div>
+
+  <footer><span data-i18n="footer">local render · no upload</span><span id="fpsCounter">-- fps</span></footer>
+</div>
+
+<video id="video" style="display:none" playsinline preload="auto"></video>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const video = $('video'), canvas = $('canvas');
+  const ctx = canvas.getContext('2d', {alpha:false});
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d', {willReadFrequently:true});
+
+  const dropzone=$('dropzone'), fileInput=$('fileInput'), filenameEl=$('filename');
+  const playBtn=$('playBtn'), muteBtn=$('muteBtn'), downloadBtn=$('downloadBtn'), fsBtn=$('fullscreenBtn');
+  const hint=$('hint'), recLight=$('recLight'), recText=$('recText'), fpsCounter=$('fpsCounter'), stagewrap=$('stagewrap');
+  const gridS=$('gridSize'), contrastS=$('contrast'), brightS=$('brightness'), smoothS=$('smooth'), volumeS=$('volume');
+  const charsetS=$('charset'), paletteS=$('palette'), languageSel=$('languageSel');
+
+  const MAX_CELLS = 42000;   // keeps heavy videos from freezing the tab
+
+  const CHARSETS = {
+    classic: "@%#*+=-:. ".split(''),
+    detailed: " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".split('').reverse(),
+    ultra: "█▓▒░@$%#8&B0OQCJYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ".split(''),
+    matrix: "日ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ9876543210 ".split(''),
+    braille: "⣿⣷⣯⣟⡿⢿⣻⣽⣾⣶⣦⣄⣀⠿⠟⠛⠉⠁⠀ ".split(''),
+    blocks: " ░▒▓█".split('').reverse(),
+    binary: " 01".split('').reverse()
+  };
+
+  /* ---------- state ---------- */
+  let usingDemo = true, recording = false, dirty = true, resetBuf = true, fontReady = false;
+  let buf = null, lastT = -1, lastDemo = 0, lastRgb = 0, fitW = 0, fitH = 0;
+  let lastObjectUrl = null, currentLang = 'th';
+  let perfScale = 1, renderEma = 8, lastAdapt = 0;
+  const perfS = $('perf');
+
+  /* ---------- palettes: every theme except a few special ones is a 256-entry lookup table ---------- */
+  const hex = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const GRADS = {                       // dark -> bright colour stops
+    fire:['#000000','#5a0a00','#d12a00','#ff9a1f','#fff3b0'],
+    lava:['#050000','#4a0000','#ff1a00','#ff6a00','#ffd000'],
+    sunset:['#0d0221','#5b1a8c','#d6336c','#ff8c42','#ffe29a'],
+    vaporwave:['#0b0221','#6a1bb0','#ff4fd8','#53e6ff','#f2fcff'],
+    cyberpunk:['#05010d','#2a0a6b','#00e5ff','#ff2bd6','#fff6a8'],
+    neonpink:['#0d0210','#6b0a45','#ff2a9d','#ff8ad0','#fff0f8'],
+    purple:['#07020f','#35106b','#7b34d6','#c490ff','#f6ecff'],
+    ocean:['#00040f','#04306b','#0a8fd6','#6fe9ff','#ffffff'],
+    ice:['#02060d','#1b3b66','#5aa6e6','#bfe6ff','#ffffff'],
+    mint:['#02080a','#0b4d4a','#16b9a1','#86f5d5','#efffff'],
+    forest:['#020a04','#0c3a1b','#2f8f4a','#9be37a','#f2ffd9'],
+    sakura:['#12050a','#7a2b48','#e86a9a','#ffb8d1','#fff1f6'],
+    gold:['#0a0600','#5c3b00','#c58a00','#ffd34d','#fff8d6'],
+    sepia:['#0b0704','#3b2a1a','#8a6a45','#d9bd8f','#fbf1dc'],
+    thermal:['#000010','#1b1bd8','#12c9a6','#f4e72a','#ff2a1b']
+  };
+  const TINTS = {                       // [r,g,b,minAlpha,maxAlpha]
+    amber:[255,176,46,.15,1], green:[70,255,120,.15,1], red:[255,45,45,.15,1],
+    greenblack:[30,255,70,.18,1], blue:[55,140,255,.15,1], darkred:[150,25,20,.2,.92]
+  };
+  const LUTS = {};
+  Object.keys(GRADS).forEach(k => {
+    const st = GRADS[k].map(hex), L = new Uint8Array(768);
+    for(let i=0;i<256;i++){
+      const p = i/255*(st.length-1), q = Math.min(st.length-2, p|0), f = p-q;
+      for(let c=0;c<3;c++) L[i*3+c] = st[q][c] + (st[q+1][c]-st[q][c])*f;
+    }
+    LUTS[k] = L;
+  });
+  Object.keys(TINTS).forEach(k => {
+    const [r,g,b,mn,mx] = TINTS[k], L = new Uint8Array(768);
+    for(let i=0;i<256;i++){ const a = clamp(i/255,mn,mx); L[i*3]=r*a; L[i*3+1]=g*a; L[i*3+2]=b*a; }
+    LUTS[k] = L;
+  });
+  LUTS.mono = new Uint8Array(768);
+  for(let i=0;i<256;i++){ LUTS.mono[i*3]=LUTS.mono[i*3+1]=LUTS.mono[i*3+2]=i; }
+
+  function clamp(v,a,b){ return v<a ? a : v>b ? b : v; }
+
+  /* ---------- UI colour follows the chosen theme ---------- */
+  const UI_FIXED = {source:['#ffb02e','#7a5518'], rgb:['#ff4dd8','#7a1f66'], chromatic:['#4dfff2','#1f6e68'],
+                    bloodmoon:['#ff5e2e','#5c1c0a'], mono:['#e6e6e6','#5a5a5a']};
+  function applyUITheme(n){
+    let A3, D3;
+    if(UI_FIXED[n]){ A3 = hex(UI_FIXED[n][0]); D3 = hex(UI_FIXED[n][1]); }
+    else {
+      const L = LUTS[n] || LUTS.amber;
+      A3 = [L[645],L[646],L[647]]; D3 = [L[270]*.7|0, L[271]*.7|0, L[272]*.7|0];
+    }
+    const st = document.documentElement.style;
+    st.setProperty('--amber', `rgb(${A3})`);
+    st.setProperty('--amber-dim', `rgb(${D3})`);
+    st.setProperty('--amber-glow', `rgba(${A3},.38)`);
+  }
+
+  /* ---------- i18n: one string per language, fields separated by | in KEYS order ---------- */
+  const KEYS = ['liveRender','secLang','secSource','secGrid','secImage','secCharset','secTheme','secAudio','secPerf','dropHeading','dropBody',
+    'labelGrid','labelContrast','labelBrightness','labelSmooth','labelVolume','play','pause','download','recordingBtn','recIdle','recPlaying',
+    'recPaused','recRecording','hint','footer','fsEnter','fsExit','errFile','srcOpt','monoOpt','perfAuto','perfQuality','perfSmooth'];
+  const RAW = {
+    th:'เรนเดอร์แบบสด|ภาษา|ไฟล์|กริด|ภาพ|ชุดตัวอักษร|ธีมสี|เสียง|ประสิทธิภาพ|+ เลือกวิดีโอ|ลากไฟล์มาวาง หรือคลิกเพื่อเลือก<br>(ประมวลผลในเครื่องทั้งหมด ไม่มีการอัปโหลด)|ความละเอียดตัวอักษร|คอนทราสต์|ความสว่าง|ความนุ่มนวลภาพ|ระดับเสียง|▶ เล่น|⏸ หยุด|⬇ ดาวน์โหลดวิดีโอ|⏺ กำลังบันทึก… (คลิกเพื่อเซฟ)|ว่าง|กำลังเล่น|หยุดชั่วคราว|กำลังบันทึก|ยังไม่มีวิดีโอ — กำลังแสดง <b>demo</b> ลองเลือกไฟล์ของคุณได้เลย|เรนเดอร์ในเครื่อง · ไม่มีการอัปโหลด|เต็มจอ|ออกจากเต็มจอ|เล่นไฟล์นี้ไม่ได้|สีจากวิดีโอจริง|ขาวดำ|อัตโนมัติ|คมชัดสุด|ลื่นสุด',
+    en:'live render|language|source|grid|image|character set|theme|audio|performance|+ Choose a video|Drag &amp; drop a file, or click to select<br>(processed locally — nothing is uploaded)|Character resolution|Contrast|Brightness|Smoothing|Volume|▶ PLAY|⏸ PAUSE|⬇ Download video|⏺ Recording… (click to save)|IDLE|PLAYING|PAUSED|RECORDING|No video yet — showing a <b>demo</b>. Pick your own file to try it.|local render · no upload|Fullscreen|Exit fullscreen|could not play this file|True video colors|Mono|Auto|Sharpest|Smoothest',
+    zh:'实时渲染|语言|来源|网格|图像|字符集|主题|音频|性能|+ 选择视频|拖放文件到此处，或点击选择<br>（本地处理，不会上传）|字符分辨率|对比度|亮度|平滑|音量|▶ 播放|⏸ 暂停|⬇ 下载视频|⏺ 录制中…（点击保存）|空闲|播放中|已暂停|录制中|还没有视频——正在显示<b>演示</b>。选择你的视频试试。|本地渲染 · 不上传|全屏|退出全屏|无法播放此文件|视频原色|黑白|自动|最清晰|最流畅',
+    tw:'即時渲染|語言|來源|網格|影像|字元集|主題|音訊|效能|+ 選擇影片|拖放檔案到此處，或點擊選擇<br>（本機處理，不會上傳）|字元解析度|對比度|亮度|平滑|音量|▶ 播放|⏸ 暫停|⬇ 下載影片|⏺ 錄製中…（點擊儲存）|閒置|播放中|已暫停|錄製中|尚無影片——正在顯示<b>示範</b>。選擇你的影片試試。|本機渲染 · 不上傳|全螢幕|結束全螢幕|無法播放此檔案|影片原色|黑白|自動|最清晰|最流暢',
+    ja:'ライブレンダリング|言語|ソース|グリッド|画像|文字セット|テーマ|オーディオ|パフォーマンス|+ 動画を選択|ドラッグ&amp;ドロップ、またはクリックで選択<br>（ローカル処理・アップロードなし）|文字解像度|コントラスト|明るさ|スムージング|音量|▶ 再生|⏸ 一時停止|⬇ 動画を保存|⏺ 録画中…（クリックで保存）|待機中|再生中|一時停止|録画中|動画がありません — <b>デモ</b>を表示中。好きな動画を選んでください。|ローカル処理 · アップロードなし|全画面|全画面を終了|このファイルは再生できません|動画本来の色|白黒|自動|最高画質|最も滑らか',
+    ko:'실시간 렌더링|언어|소스|그리드|이미지|문자 세트|테마|오디오|성능|+ 동영상 선택|파일을 끌어다 놓거나 클릭해서 선택하세요<br>(로컬에서 처리되며 업로드되지 않습니다)|문자 해상도|대비|밝기|스무딩|볼륨|▶ 재생|⏸ 일시정지|⬇ 동영상 다운로드|⏺ 녹화 중… (클릭하면 저장)|대기|재생 중|일시정지됨|녹화 중|아직 동영상이 없습니다 — <b>데모</b>를 표시 중입니다. 직접 파일을 선택해 보세요.|로컬 렌더링 · 업로드 없음|전체 화면|전체 화면 종료|이 파일을 재생할 수 없습니다|영상 원본 색상|흑백|자동|최고 화질|가장 부드럽게',
+    id:'render langsung|bahasa|sumber|grid|gambar|set karakter|tema|audio|performa|+ Pilih video|Seret &amp; lepas file, atau klik untuk memilih<br>(diproses lokal — tanpa unggah)|Resolusi karakter|Kontras|Kecerahan|Penghalusan|Volume|▶ PUTAR|⏸ JEDA|⬇ Unduh video|⏺ Merekam… (klik untuk simpan)|DIAM|MEMUTAR|JEDA|MEREKAM|Belum ada video — menampilkan <b>demo</b>. Pilih file Anda.|render lokal · tanpa unggah|Layar penuh|Keluar layar penuh|file tidak dapat diputar|Warna asli video|Hitam putih|Otomatis|Paling tajam|Paling mulus',
+    ms:'render langsung|bahasa|sumber|grid|imej|set aksara|tema|audio|prestasi|+ Pilih video|Seret &amp; lepas fail, atau klik untuk memilih<br>(diproses secara setempat — tiada muat naik)|Resolusi aksara|Kontras|Kecerahan|Pelicinan|Kelantangan|▶ MAIN|⏸ JEDA|⬇ Muat turun video|⏺ Merakam… (klik untuk simpan)|SEDIA|MEMAINKAN|DIJEDA|MERAKAM|Belum ada video — memaparkan <b>demo</b>. Pilih fail anda.|render setempat · tiada muat naik|Skrin penuh|Keluar skrin penuh|fail tidak dapat dimainkan|Warna asal video|Hitam putih|Auto|Paling tajam|Paling lancar',
+    vi:'render trực tiếp|ngôn ngữ|nguồn|lưới|hình ảnh|bộ ký tự|chủ đề|âm thanh|hiệu năng|+ Chọn video|Kéo thả tệp vào đây, hoặc nhấp để chọn<br>(xử lý cục bộ — không tải lên)|Độ phân giải ký tự|Độ tương phản|Độ sáng|Làm mượt|Âm lượng|▶ PHÁT|⏸ TẠM DỪNG|⬇ Tải video|⏺ Đang ghi… (nhấp để lưu)|CHỜ|ĐANG PHÁT|TẠM DỪNG|ĐANG GHI|Chưa có video — đang hiển thị <b>demo</b>. Hãy chọn tệp của bạn.|render cục bộ · không tải lên|Toàn màn hình|Thoát toàn màn hình|không phát được tệp này|Màu gốc của video|Đen trắng|Tự động|Sắc nét nhất|Mượt nhất',
+    ru:'рендеринг в реальном времени|язык|источник|сетка|изображение|набор символов|тема|звук|производительность|+ Выбрать видео|Перетащите файл или нажмите, чтобы выбрать<br>(локальная обработка — без загрузки)|Разрешение символов|Контраст|Яркость|Сглаживание|Громкость|▶ ИГРАТЬ|⏸ ПАУЗА|⬇ Скачать видео|⏺ Запись… (нажмите, чтобы сохранить)|ОЖИДАНИЕ|ВОСПРОИЗВЕДЕНИЕ|ПАУЗА|ЗАПИСЬ|Видео нет — показано <b>демо</b>. Выберите свой файл.|локальный рендер · без загрузки|Полный экран|Выйти из полного экрана|не удалось воспроизвести файл|Настоящие цвета видео|Чёрно-белый|Авто|Максимальная чёткость|Максимальная плавность',
+    es:'renderizado en vivo|idioma|fuente|cuadrícula|imagen|conjunto de caracteres|tema|audio|rendimiento|+ Elegir un vídeo|Arrastra un archivo aquí o haz clic para elegir<br>(se procesa en tu equipo — no se sube nada)|Resolución de caracteres|Contraste|Brillo|Suavizado|Volumen|▶ REPRODUCIR|⏸ PAUSA|⬇ Descargar vídeo|⏺ Grabando… (clic para guardar)|INACTIVO|REPRODUCIENDO|EN PAUSA|GRABANDO|Aún no hay vídeo — se muestra una <b>demo</b>. Elige tu propio archivo para probar.|render local · sin subidas|Pantalla completa|Salir de pantalla completa|no se pudo reproducir este archivo|Colores originales del vídeo|Monocromo|Auto|Máxima nitidez|Máxima fluidez',
+    fr:'rendu en direct|langue|source|grille|image|jeu de caractères|thème|audio|performances|+ Choisir une vidéo|Glissez un fichier ici ou cliquez pour choisir<br>(traité en local — rien n’est envoyé)|Résolution des caractères|Contraste|Luminosité|Lissage|Volume|▶ LECTURE|⏸ PAUSE|⬇ Télécharger la vidéo|⏺ Enregistrement… (cliquez pour sauvegarder)|INACTIF|LECTURE|EN PAUSE|ENREGISTREMENT|Pas encore de vidéo — une <b>démo</b> est affichée. Choisissez votre fichier.|rendu local · aucun envoi|Plein écran|Quitter le plein écran|impossible de lire ce fichier|Couleurs d’origine|Monochrome|Auto|Netteté maximale|Fluidité maximale',
+    de:'Live-Rendering|Sprache|Quelle|Raster|Bild|Zeichensatz|Design|Audio|Leistung|+ Video wählen|Datei hierher ziehen oder zum Auswählen klicken<br>(lokale Verarbeitung — kein Upload)|Zeichenauflösung|Kontrast|Helligkeit|Glättung|Lautstärke|▶ ABSPIELEN|⏸ PAUSE|⬇ Video herunterladen|⏺ Aufnahme… (Klicken zum Speichern)|BEREIT|WIEDERGABE|PAUSIERT|AUFNAHME|Noch kein Video — es wird eine <b>Demo</b> angezeigt. Wähle deine eigene Datei.|lokales Rendering · kein Upload|Vollbild|Vollbild beenden|Datei kann nicht abgespielt werden|Originalfarben|Monochrom|Auto|Schärfste|Flüssigste',
+    pt:'renderização ao vivo|idioma|fonte|grade|imagem|conjunto de caracteres|tema|áudio|desempenho|+ Escolher vídeo|Arraste um arquivo ou clique para escolher<br>(processado localmente — nada é enviado)|Resolução dos caracteres|Contraste|Brilho|Suavização|Volume|▶ REPRODUZIR|⏸ PAUSAR|⬇ Baixar vídeo|⏺ Gravando… (clique para salvar)|OCIOSO|REPRODUZINDO|PAUSADO|GRAVANDO|Ainda sem vídeo — exibindo uma <b>demo</b>. Escolha seu arquivo.|render local · sem envio|Tela cheia|Sair da tela cheia|não foi possível reproduzir este arquivo|Cores originais do vídeo|Monocromático|Auto|Mais nítido|Mais fluido',
+    hi:'लाइव रेंडर|भाषा|स्रोत|ग्रिड|छवि|अक्षर सेट|थीम|ऑडियो|प्रदर्शन|+ वीडियो चुनें|फ़ाइल खींचकर छोड़ें या चुनने के लिए क्लिक करें<br>(स्थानीय रूप से प्रोसेस — कुछ अपलोड नहीं होता)|अक्षर रिज़ॉल्यूशन|कॉन्ट्रास्ट|चमक|स्मूदिंग|वॉल्यूम|▶ चलाएँ|⏸ रोकें|⬇ वीडियो डाउनलोड करें|⏺ रिकॉर्डिंग… (सेव करने के लिए क्लिक करें)|निष्क्रिय|चल रहा है|रुका हुआ|रिकॉर्डिंग|अभी कोई वीडियो नहीं — <b>डेमो</b> दिख रहा है। अपनी फ़ाइल चुनें।|स्थानीय रेंडर · कोई अपलोड नहीं|पूर्ण स्क्रीन|पूर्ण स्क्रीन से बाहर|यह फ़ाइल नहीं चल सकी|वीडियो के असली रंग|श्वेत-श्याम|ऑटो|सबसे स्पष्ट|सबसे सहज',
+    tr:'canlı render|dil|kaynak|ızgara|görüntü|karakter kümesi|tema|ses|performans|+ Video seç|Dosyayı sürükleyip bırakın veya seçmek için tıklayın<br>(yerel olarak işlenir — hiçbir şey yüklenmez)|Karakter çözünürlüğü|Kontrast|Parlaklık|Yumuşatma|Ses düzeyi|▶ OYNAT|⏸ DURAKLAT|⬇ Videoyu indir|⏺ Kaydediliyor… (kaydetmek için tıklayın)|BEKLEMEDE|OYNATILIYOR|DURAKLATILDI|KAYIT|Henüz video yok — <b>demo</b> gösteriliyor. Kendi dosyanızı seçin.|yerel render · yükleme yok|Tam ekran|Tam ekrandan çık|dosya oynatılamadı|Videonun gerçek renkleri|Siyah beyaz|Otomatik|En net|En akıcı'
+  };
+  const I18N = {};
+  Object.keys(RAW).forEach(l => { const v = RAW[l].split('|'); I18N[l] = {}; KEYS.forEach((k,i) => I18N[l][k] = v[i]); });
+  const HTML_LANG = {tw:'zh-Hant', zh:'zh-Hans'};
+  const t = k => (I18N[currentLang] && I18N[currentLang][k]) || I18N.en[k] || '';
+  const isPlaying = () => !usingDemo && !video.paused && !video.ended;
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+
+  function refreshStatus(){
+    if(!usingDemo) playBtn.textContent = isPlaying() ? t('pause') : t('play');
+    else playBtn.textContent = t('play');
+    downloadBtn.textContent = recording ? t('recordingBtn') : t('download');
+    recText.textContent = recording ? t('recRecording') : usingDemo ? t('recIdle') : isPlaying() ? t('recPlaying') : t('recPaused');
+    recLight.classList.toggle('on', recording || isPlaying());
+    document.body.classList.toggle('playing', recording || isPlaying());
+    fsBtn.title = fsElement() ? t('fsExit') : t('fsEnter');
+    fsBtn.textContent = fsElement() ? '⤢' : '⛶';
+  }
+  function applyLanguage(lang){
+    currentLang = I18N[lang] ? lang : 'en';
+    document.documentElement.lang = HTML_LANG[currentLang] || currentLang;
+    document.querySelectorAll('[data-i18n]').forEach(el => { const v = t(el.dataset.i18n); if(v) el.innerHTML = v; });
+    [['source','srcOpt'],['mono','monoOpt'],['auto','perfAuto'],['quality','perfQuality'],['smooth','perfSmooth']].forEach(([v,k]) => {
+      const o = document.querySelector(`#palette option[value="${v}"], #perf option[value="${v}"]`); if(o) o.textContent = t(k);
+    });
+    refreshStatus();
+  }
+
+  /* ---------- helpers ---------- */
+  function paint(el){ el.style.setProperty('--p', ((el.value-el.min)/(el.max-el.min)*100)+'%'); }
+  function fit(w,h){
+    if(!w || !h) return;
+    fitW = w; fitH = h;
+    const s = Math.min(stagewrap.clientWidth/w, stagewrap.clientHeight/h);
+    if(!isFinite(s) || s<=0) return;
+    canvas.style.width = Math.floor(w*s)+'px';
+    canvas.style.height = Math.floor(h*s)+'px';
+  }
+
+  /* ---------- ASCII renderer: glyph atlas + ImageData blit (no fillText per cell) ---------- */
+  const COARSE = matchMedia('(pointer:coarse)').matches;
+  const PERF = {auto:COARSE?{px:1.3e6,cells:26000}:{px:2.2e6,cells:42000}, quality:{px:4.2e6,cells:90000}, smooth:{px:1.1e6,cells:20000}};
+  let atlas = null, atlasKey = '', outImg = null, out32 = null;
+  const lut8 = new Uint8Array(256), cidx = new Uint8Array(256);
+  let lutKey = '', cidxKey = '';
+
+  function buildAtlas(chars, cw, ch){
+    const key = charsetS.value+'|'+cw+'|'+ch+'|'+fontReady;
+    if(atlasKey===key) return atlas;
+    const gc = document.createElement('canvas'); gc.width = cw; gc.height = ch;
+    const gx = gc.getContext('2d', {willReadFrequently:true});
+    gx.font = `${ch}px "IBM Plex Mono", monospace`; gx.textBaseline = 'top'; gx.fillStyle = '#fff';
+    atlas = chars.map(c => {
+      if(c===' ' || c==='\u2800') return null;
+      gx.clearRect(0,0,cw,ch); gx.fillText(c,0,0);
+      const d = gx.getImageData(0,0,cw,ch).data, X = [], Y = [], A = [];
+      for(let yy=0,i=3;yy<ch;yy++) for(let xx=0;xx<cw;xx++,i+=4) if(d[i]){ X.push(xx); Y.push(yy); A.push(d[i]); }
+      return A.length ? {xs:Uint8Array.from(X), ys:Uint8Array.from(Y), av:Uint8Array.from(A)} : null;
+    });
+    atlasKey = key; return atlas;
+  }
+
+  let hr=0, hg=0, hb=0;
+  function hsl(h,s,l){
+    h/=360; const q = l<.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+    const f = x => { if(x<0)x+=1; if(x>1)x-=1; return (x<1/6 ? p+(q-p)*6*x : x<.5 ? q : x<2/3 ? p+(q-p)*(2/3-x)*6 : p)*255; };
+    hr = f(h+1/3); hg = f(h); hb = f(h-1/3);
+  }
+
+  function render(src, sw, sh){
+    if(!sw || !sh) return;
+    const t0 = performance.now();
+    const auto = perfS.value==='auto';
+    const P = PERF[perfS.value] || PERF.auto;
+    const sc = Math.min(1, Math.sqrt(P.px/(sw*sh))) / (auto ? perfScale : 1);   // output scale (pixel budget)
+    const g = +gridS.value;
+    let cw = Math.max(3, Math.round(g*sc)), chh = Math.round(cw*1.65);
+    let cols = Math.floor(sw*sc/cw), rows = Math.floor(sh*sc/chh);
+    if(cols*rows > P.cells){
+      const k = Math.sqrt(cols*rows/P.cells);
+      cw = Math.ceil(cw*k); chh = Math.round(cw*1.65);
+      cols = Math.floor(sw*sc/cw); rows = Math.floor(sh*sc/chh);
+    }
+    cols = Math.max(1,cols); rows = Math.max(1,rows);
+
+    if(off.width!==cols || off.height!==rows){ off.width = cols; off.height = rows; buf = null; }
+    offCtx.drawImage(src,0,0,cols,rows);
+    let data;
+    try{ data = offCtx.getImageData(0,0,cols,rows).data; }catch(e){ return; }
+
+    const n = cols*rows;
+    if(!buf || buf.length!==n*3){ buf = new Float32Array(n*3); resetBuf = true; }
+    const a = resetBuf ? 1 : 1 - (+smoothS.value)/100;
+    resetBuf = false;
+    for(let i=0,j=0;i<n;i++,j+=3){
+      const k = i*4;
+      buf[j]   += (data[k]   - buf[j])   * a;
+      buf[j+1] += (data[k+1] - buf[j+1]) * a;
+      buf[j+2] += (data[k+2] - buf[j+2]) * a;
+    }
+
+    const W = cols*cw, H = rows*chh;
+    if(canvas.width!==W || canvas.height!==H){ canvas.width = W; canvas.height = H; outImg = null; }
+    if(fitW!==W || fitH!==H) fit(W,H);
+    if(!outImg){ outImg = ctx.createImageData(W,H); out32 = new Uint32Array(outImg.data.buffer); }
+    out32.fill(0xFF000000);
+
+    const contrast = +contrastS.value, bright = +brightS.value;
+    const lk = contrast+'|'+bright;
+    if(lk!==lutKey){
+      for(let i=0;i<256;i++){ const v = (i-128)*contrast+128+bright; lut8[i] = v<0 ? 0 : v>255 ? 255 : v; }
+      lutKey = lk;
+    }
+    const chars = CHARSETS[charsetS.value] || CHARSETS.classic, nC = chars.length;
+    if(cidxKey!==charsetS.value){
+      for(let i=0;i<256;i++) cidx[i] = (nC-1) - Math.floor((i/255)*(nC-1));
+      cidxKey = charsetS.value;
+    }
+    const masks = buildAtlas(chars, cw, chh);
+    const mode = paletteS.value, lut = LUTS[mode];
+    const time = performance.now()*0.00025, shift = Math.max(1, Math.round(cw/4));
+
+    for(let y=0;y<rows;y++){
+      const py = y*chh;
+      for(let x=0;x<cols;x++){
+        const j = (y*cols+x)*3;
+        const r = lut8[buf[j]|0], g2 = lut8[buf[j+1]|0], b = lut8[buf[j+2]|0];
+        const br = r>g2 ? (r>b ? r : b) : (g2>b ? g2 : b);   // HSV value: every hue reads fairly
+        const m = masks[cidx[br]];
+        if(!m) continue;
+
+        let cr, cg, cb;
+        if(lut){ const k = br*3; cr = lut[k]; cg = lut[k+1]; cb = lut[k+2]; }
+        else if(mode==='source'){ cr = r; cg = g2; cb = b; }
+        else if(mode==='chromatic'){
+          cr = lut8[buf[(y*cols+clamp(x-shift,0,cols-1))*3]|0]; cg = g2;
+          cb = lut8[buf[(y*cols+clamp(x+shift,0,cols-1))*3+2]|0];
+        }
+        else if(mode==='rgb'){ hsl((x*5+y*7+time*360)%360, .95, clamp(.28+(br/255)*.42,.1,.78)); cr = hr; cg = hg; cb = hb; }
+        else { // bloodmoon
+          const al = br/255, rt = y/rows, aa = clamp(al,.18,1);
+          cr = (190+60*(1-rt))*aa; cg = (30+55*(1-rt)*al)*aa; cb = (15+10*al)*aa;
+        }
+        cr |= 0; cg |= 0; cb |= 0;
+
+        const packed = 0xFF000000 | (cb<<16) | (cg<<8) | cr;
+        const o = py*W + x*cw, xs = m.xs, ys = m.ys, av = m.av;
+        for(let q=0, nq=av.length; q<nq; q++){
+          const al = av[q];
+          out32[o + ys[q]*W + xs[q]] = al===255 ? packed
+            : (0xFF000000 | (((cb*al*32897)>>>23)<<16) | (((cg*al*32897)>>>23)<<8) | ((cr*al*32897)>>>23));
+        }
+      }
+    }
+    ctx.putImageData(outImg,0,0);
+
+    // auto performance: lower the output resolution when frames take too long, raise it back when there is headroom
+    const now = performance.now();
+    renderEma = renderEma*.9 + (now-t0)*.1;
+    if(auto && now-lastAdapt > 800){
+      if(renderEma>20 && perfScale<2.5){ perfScale = Math.min(2.5, perfScale+.25); lastAdapt = now; }
+      else if(renderEma<8 && perfScale>1){ perfScale = Math.max(1, perfScale-.15); lastAdapt = now; }
+    }
+  }
+
+  /* ---------- demo pattern ---------- */
+  const DW=240, DH=160;
+  const demoCanvas = document.createElement('canvas'); demoCanvas.width = DW; demoCanvas.height = DH;
+  const demoCtx = demoCanvas.getContext('2d');
+  const demoImg = demoCtx.createImageData(DW,DH);
+  function drawDemo(ms){
+    const tm = ms*0.001, d = demoImg.data;
+    for(let y=0;y<DH;y++) for(let x=0;x<DW;x++){
+      const i = (y*DW+x)*4;
+      const n = (Math.sin(x*.05+tm*1.3)+Math.sin(y*.07-tm)+Math.sin((x+y)*.03+tm*.7)+3)/6;
+      d[i] = 255*n; d[i+1] = 140*n+40; d[i+2] = 30; d[i+3] = 255;
+    }
+    demoCtx.putImageData(demoImg,0,0);
+  }
+
+  /* ---------- single render loop, driven by real video frames when the browser supports it ---------- */
+  const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  let rvfcOn = false, frames = 0, fpsT = performance.now();
+  function tick(now){
+    frames++;
+    if(now-fpsT >= 1000){
+      fpsCounter.textContent = Math.round(frames*1000/(now-fpsT))+' fps · '+renderEma.toFixed(1)+' ms · max ~'+Math.round(1000/Math.max(.2,renderEma))+' fps';
+      frames = 0; fpsT = now;
+    }
+  }
+  function loop(now){
+    requestAnimationFrame(loop);
+    if(document.hidden) return;
+    if(usingDemo){
+      if(now-lastDemo < 15) return;
+      lastDemo = now; drawDemo(now); render(demoCanvas,DW,DH); tick(now); return;
+    }
+    if(video.readyState<2 || !video.videoWidth) return;
+    if(hasRVFC && !rvfcOn){
+      rvfcOn = true;
+      const cb = () => { dirty = true; video.requestVideoFrameCallback(cb); };
+      video.requestVideoFrameCallback(cb);
+    }
+    const stale = hasRVFC ? !dirty : (video.currentTime===lastT && !dirty);
+    if(stale){
+      // animated "RGB" theme repaints between video frames, but capped so it does not double the cost
+      if(!(isPlaying() && paletteS.value==='rgb' && now-lastRgb>40)) return;
+    }
+    lastRgb = now; lastT = video.currentTime; dirty = false;
+    render(video, video.videoWidth, video.videoHeight);
+    tick(now);
+  }
+  requestAnimationFrame(loop);
+  perfS.addEventListener('change', () => { perfScale = 1; renderEma = 8; dirty = true; });
+
+  /* ---------- file handling ---------- */
+  const canRecord = !!(canvas.captureStream && window.MediaRecorder);
+
+  function loadFile(file){
+    if(!file || !file.type || !file.type.startsWith('video/')) return;
+    if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.stop();
+    canvas.classList.add('swap');
+    if(lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+    lastObjectUrl = URL.createObjectURL(file);
+    usingDemo = false; resetBuf = true; dirty = true; lastT = -1; perfScale = 1; renderEma = 8;
+    hint.classList.add('gone');
+    filenameEl.textContent = file.name;
+    video.src = lastObjectUrl;
+    video.loop = true;
+    video.muted = false;
+    video.volume = volumeS.value/100;
+    video.load();
+    playBtn.disabled = muteBtn.disabled = false;
+    downloadBtn.disabled = !canRecord;
+    refreshStatus();
+  }
+  video.addEventListener('loadedmetadata', () => {
+    fitW = 0; fit(video.videoWidth, video.videoHeight);
+    video.play().catch(()=>{});            // autoplay can be blocked; the button still works
+  });
+  video.addEventListener('loadeddata', () => { dirty = true; canvas.classList.remove('swap'); });
+  ['play','pause','ended'].forEach(e => video.addEventListener(e, () => { dirty = true; refreshStatus(); }));
+  video.addEventListener('seeking', () => { resetBuf = true; dirty = true; });
+  video.addEventListener('error', () => {
+    if(!video.getAttribute('src')) return;
+    filenameEl.textContent += '  — ⚠ ' + t('errFile');
+    playBtn.disabled = downloadBtn.disabled = true;
+    canvas.classList.remove('swap');
+  });
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', e => { if(e.key==='Enter' || e.key===' '){ e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', e => { loadFile(e.target.files[0]); fileInput.value = ''; });
+  ['dragenter','dragover'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+  window.addEventListener('drop', e => loadFile(e.dataTransfer && e.dataTransfer.files[0]));
+
+  playBtn.addEventListener('click', () => {
+    if(usingDemo) return;
+    if(video.paused || video.ended) video.play().catch(()=>{}); else video.pause();
+  });
+  const panel = $('panel'), settingsBtn = $('settingsBtn'), handle = $('sheetHandle');
+  const setSheet = o => { panel.classList.toggle('open', o); settingsBtn.setAttribute('aria-expanded', o); };
+  settingsBtn.addEventListener('click', () => setSheet(!panel.classList.contains('open')));
+  stagewrap.addEventListener('click', () => { if(panel.classList.contains('open')) setSheet(false); else if(!usingDemo) playBtn.click(); });
+  let ty0 = null;
+  handle.addEventListener('touchstart', e => { ty0 = e.touches[0].clientY; }, {passive:true});
+  handle.addEventListener('touchmove', e => { if(ty0!==null && e.touches[0].clientY-ty0>36){ setSheet(false); ty0 = null; } }, {passive:true});
+  window.addEventListener('keydown', e => {
+    const tg = e.target.tagName; if(tg==='SELECT' || tg==='INPUT' || tg==='BUTTON' || e.target.id==='dropzone') return;
+    if(e.key===' '){ e.preventDefault(); playBtn.click(); } else if(e.key==='f' || e.key==='F') fsBtn.click();
+  });
+  let wl = null;
+  async function wake(){
+    try{
+      if(isPlaying() && !wl && navigator.wakeLock){ wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); }
+      else if(!isPlaying() && wl){ wl.release(); wl = null; }
+    }catch(e){ wl = null; }
+  }
+  ['play','pause','ended'].forEach(ev => video.addEventListener(ev, wake));
+  document.addEventListener('visibilitychange', () => { if(!document.hidden){ dirty = true; wake(); } });
+  video.disablePictureInPicture = true; video.setAttribute('webkit-playsinline','');
+
+  muteBtn.addEventListener('click', () => { video.muted = !video.muted; muteBtn.textContent = video.muted ? '🔇' : '🔊'; });
+  volumeS.addEventListener('input', () => {
+    const v = parseInt(volumeS.value,10);
+    video.volume = v/100; $('volVal').textContent = v+'%';
+    if(v>0 && video.muted){ video.muted = false; }
+    muteBtn.textContent = (v===0 || video.muted) ? '🔇' : '🔊';
+  });
+
+  /* ---------- controls ---------- */
+  const bind = (el, label, fmt) => {
+    paint(el);
+    el.addEventListener('input', () => { if(label) label.textContent = fmt(el.value); paint(el); dirty = true; });
+  };
+  bind(gridS, $('gridVal'), v => v+'px');
+  bind(contrastS, $('contrastVal'), v => parseFloat(v).toFixed(2));
+  bind(brightS, $('brightVal'), v => v);
+  bind(smoothS, $('smoothVal'), v => v+'%');
+  paint(volumeS);
+  volumeS.addEventListener('input', () => paint(volumeS));
+  charsetS.addEventListener('change', () => dirty = true);
+  paletteS.addEventListener('change', () => { applyUITheme(paletteS.value); dirty = true; });
+  languageSel.addEventListener('change', () => applyLanguage(languageSel.value));
+
+  if('ResizeObserver' in window){
+    new ResizeObserver(() => { fit(fitW,fitH); }).observe(stagewrap);
+  } else window.addEventListener('resize', () => fit(fitW,fitH));
+
+  /* ---------- fullscreen (with Safari prefix, hidden when unsupported) ---------- */
+  const rootEl = document.documentElement;
+  const reqFs = rootEl.requestFullscreen || rootEl.webkitRequestFullscreen;
+  if(!reqFs) fsBtn.hidden = true;
+  fsBtn.addEventListener('click', () => {
+    try{
+      if(!fsElement()) reqFs.call(rootEl);
+      else (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }catch(e){}
+  });
+  ['fullscreenchange','webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => { refreshStatus(); setTimeout(()=>fit(fitW,fitH),60); }));
+
+  /* ---------- record / download ---------- */
+  let audioCtx = null, audioDest = null, mediaRecorder = null, chunks = [];
+  function setupAudio(){
+    if(audioCtx) return;
+    try{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(video);   // may only be created once per element
+      audioDest = audioCtx.createMediaStreamDestination();
+      src.connect(audioDest); src.connect(audioCtx.destination);
+    }catch(e){ audioCtx = audioDest = null; }
+  }
+  function finishRecording(){
+    recording = false;
+    downloadBtn.classList.remove('primary');
+    refreshStatus();
+  }
+  downloadBtn.addEventListener('click', () => {
+    if(usingDemo || !canRecord) return;
+    if(mediaRecorder && mediaRecorder.state==='recording'){ mediaRecorder.stop(); return; }
+
+    setupAudio();
+    if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+    const stream = canvas.captureStream(60);
+    if(audioDest) audioDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+
+    const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m => MediaRecorder.isTypeSupported(m));
+    chunks = [];
+    try{ mediaRecorder = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined); }
+    catch(e){ try{ mediaRecorder = new MediaRecorder(stream); }catch(e2){ return; } }
+    const rec = mediaRecorder;
+    rec.ondataavailable = e => { if(e.data && e.data.size>0) chunks.push(e.data); };
+    rec.onerror = () => { stream.getVideoTracks().forEach(tr => tr.stop()); finishRecording(); };
+    rec.onstop = () => {
+      stream.getVideoTracks().forEach(tr => tr.stop());
+      if(chunks.length){
+        const type = rec.mimeType || 'video/webm';
+        const url = URL.createObjectURL(new Blob(chunks, {type}));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ascii-video-${new Date().toISOString().replace(/[:.]/g,'-')}.${type.includes('mp4')?'mp4':'webm'}`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 8000);
+      }
+      chunks = [];
+      finishRecording();
+    };
+    rec.start(1000);                       // flush every second so long recordings don't sit in one blob
+    recording = true;
+    downloadBtn.classList.add('primary');
+    video.currentTime = 0;
+    if(video.paused) video.play().catch(()=>{});
+    refreshStatus();
+  });
+
+  /* ---------- init ---------- */
+  applyUITheme(paletteS.value);
+  applyLanguage(currentLang);
+  if(document.fonts && document.fonts.load) document.fonts.load('12px "IBM Plex Mono"').then(() => { fontReady = true; dirty = true; }).catch(()=>{});
+
+  console.log('%cascii-player', 'color:#ffb02e;font-size:22px;font-weight:700;');
+})();
+</script>
+</body>
+</html>
